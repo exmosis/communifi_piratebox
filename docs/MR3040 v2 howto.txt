@@ -1,0 +1,162 @@
+Instructions for MR3040 v2.
+
+- Set switch to WISP mode.
+
+- make sure you have a copy of openwrt-ar71xx-generic-tl-mr3040-v2-squashfs-factory.bin firmware file
+
+- connect box to computer via ethernet, turn off other networking
+
+- turn on box
+
+- browse to 192.168.0.254
+
+- go to "Tools" > "System Upgrade" and upload the firmware file above. Box will restart.
+
+- Computer should now pick up a 192.168.1.x IP from the box. Telnet to 192.168.1.1
+
+- Type 'passwd' to set the root password
+
+- edit /etc/config/network - I actually do this by copying it to /tmp first due to the squashfs, then copying back to /etc/config. 
+
+- add the following lines to the end:
+
+        option gateway '192.168.1.254'
+        list dns '192.168.1.254'
+        list dns '8.8.8.8'
+
+where 192.168.1.254 is your outbound net router. (8.8.8.8 is google DNS)
+
+- save the file, turn off the box, and plug it into your router instead. switch on internet on your computer.
+
+- ssh to root@192.168.1.1 (if setting up several boxes, you probably want to add an entry to /etc/hosts file first, to avoid SSH conflicts)
+
+- if you connect ok, check you can ping google.com
+
+- set up USB:
+
+opkg update
+opkg install kmod-usb-uhci
+insmod usbcore ## may return: file exists
+insmod uhci
+opkg install kmod-usb-ohci ## may return: up to date.
+insmod usb-ohci
+
+- get your USB drive ready, FAT32 formatted - insert it in the box
+
+- run: opkg install http://stable.openwrt.piratebox.de/all/packages/pbxopkg_0.0.4_all.ipk - this will install matthias' pb repo 
+
+- so you can then just do…
+
+opkg update && opkg install piratebox
+
+and then waiiiit. 
+
+- disconnect the box from the router, then reboot as it suggest. you may need to do
+
+reboot -f
+
+
+###### Installing other pb images
+
+- Install the timesave script
+
+/opt/piratebox/bin/timesave.sh /opt/piratebox/conf/piratebox.conf install 
+
+- Reconnect the box to the net and ssh in again.
+
+- turn off DNS interception
+
+/etc/init.d/piratebox nodns
+
+opkg update
+
+opkg install piratebox-mesh
+opkg install piratebox-forban
+
+
+##### Install git and get communifi repo
+
+- Install git 
+
+opkg install -d piratebox git
+
+------- SOMETHING WRONG WITH GIT.
+
+- Set up a new SSH key for the box
+
+mkdir ~/.ssh
+dropbearkey -t rsa -f ~/.ssh/communifi_rsa
+
+This will print out a big long line starting with 'ssh-rsa'. Copy everything from and including this up to (but not including) 'Fingerprint'.
+
+- Log into the communifi github account and add this as an SSH key to the account settings. Label it with the box name.
+
+- Move the existing www and bin directories out of the way
+
+cd /opt/piratebox
+mv bin bin_pb_orig
+mv www www_pb_orig
+
+- Clone the communifi repo on the dev branch
+
+git clone -b dev git@github.com:exmosis/communifi_pb_opt.git
+
+
+---- NOT WORKING
+
+### Install DLNA next
+
+
+
+
+#### Portal box
+
+
+1. Add external DNS to PB for use by DHCP clients connecting, by
+adding this to /etc/piratebox.common alongside the "nameserver
+127.0.0.1" line:
+
+  echo "nameserver 192.168.1.254" >> /tmp/resolv.conf
+
+Were 192.168.1.254 is my router. Suspect using 8.8.8.8 is easier for
+portability.
+
+2. Comment out the 'no-resolv' setting in
+/opt/piratebox/conf/dnsmasq_default.conf to allow the box to use other
+DNS servers (specified, I believe, in /etc/config/network as 'dns'
+options)
+
+Also uncomment 'dhcp-authoritative'
+
+3. Amend the PB config generation script at
+/opt/piratebox/bin/generate_config_files.sh to only redirect a single
+domain name, changing:
+
+  dns_redirect="/#/$net.$ip_pb"
+
+to:
+
+  dns_redirect="/piratebox.lan/$net.$ip_pb"
+
+(Actually, I've changed mine to redirect exmosis.cb, but same thing)
+
+4. Enable iptables by editing /etc/sysctl.conf and commenting out:
+
+  net.bridge.bridge-nf-call-iptables=0
+
+5. I found I had to tell iptables to be permissive, as it seemed
+locked down by default. I added this to /etc/firewall.user:
+
+  iptables -I zone_wan_ACCEPT -j ACCEPT
+
+6. I then had a problem getting my laptop to take the DNS from the PB.
+After a long search, I found DHCP from the box was getting overridden
+by DHCP on the main net router, so disallowed DHCP traffic through the
+PB. I think this means I can connect to either the wifi on the PB, and
+use the DHCP/DNS on it, or connect to the wifi on my router as normal,
+and not worry about it, but need to test this. Anyway, added this to
+the /etc/firewall.user script too:
+
+  iptables -I FORWARD -p udp --dport 67:68 --sport 67:68 -j DROP
+
+
