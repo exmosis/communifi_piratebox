@@ -2,15 +2,15 @@ Instructions for MR3040 v2.
 
 - Set switch to WISP mode.
 
-- make sure you have a copy of openwrt-ar71xx-generic-tl-mr3040-v2-squashfs-factory.bin firmware file
+- make sure you have a copy of openwrt-ar71xx-generic-tl-mr3040-v2-squashfs-factory.bin firmware file. Currently I'm using the ecco one.
 
 - connect box to computer via ethernet, turn off other networking
 
 - turn on box
 
-- browse to 192.168.0.254
+- browse to 192.168.0.254 or 192.168.0.1 (more likely) - username is admin / admin
 
-- go to "Tools" > "System Upgrade" and upload the firmware file above. Box will restart.
+- go to "System Tools" > "Firmware Upgrade" and upload the firmware file above. Box will restart.
 
 - Computer should now pick up a 192.168.1.x IP from the box. Telnet to 192.168.1.1
 
@@ -26,7 +26,7 @@ Instructions for MR3040 v2.
 
 where 192.168.1.254 is your outbound net router. (8.8.8.8 is google DNS)
 
-- save the file, turn off the box, and plug it into your router instead. switch on internet on your computer.
+- save the file, turn off the box, and plug it into your router instead. Switch the box on. switch on internet on your computer.
 
 - ssh to root@192.168.1.1 (if setting up several boxes, you probably want to add an entry to /etc/hosts file first, to avoid SSH conflicts)
 
@@ -78,18 +78,45 @@ opkg install piratebox-forban
 
 - Install git 
 
-opkg install -d piratebox git
+opkg update && opkg install -d piratebox git
 
-------- SOMETHING WRONG WITH GIT.
+- Setup links (unless you've installed MiniDLNA already)
+
+ln -s /mnt/ext/usr/bin/git /usr/bin
+echo 'export PATH=$PATH:/usr/local/bin' >> /etc/profile
+echo 'export LD_LIBRARY_PATH=/lib:/usr/lib:/usr/local/lib'  >> /etc/profile
+source /etc/profile
+
+(These are needed for MiniDLNA too)
 
 - Set up a new SSH key for the box
 
 mkdir ~/.ssh
+chmod 600 ~/.ssh
 dropbearkey -t rsa -f ~/.ssh/communifi_rsa
 
-This will print out a big long line starting with 'ssh-rsa'. Copy everything from and including this up to (but not including) 'Fingerprint'.
+- This will print out a big long line starting with 'ssh-rsa'. Copy everything from and including this up to the end. (N.B. If you need to get this again, use 'dropbearkey -y -f ~/.ssh/communifi_rsa' )
 
 - Log into the communifi github account and add this as an SSH key to the account settings. Label it with the box name.
+
+- Create a dropbear command to connect to github
+
+cd
+vim gitssh.sh
+Add the following lines:
+
+#!/bin/sh
+ssh -i ~/.ssh/communifi_rsa $*
+
+Add permissions to the file:
+
+chmod a+x ~/gitssh.sh
+
+export GIT_SSH=~/gitssh.sh
+
+And add to profile
+
+echo 'export GIT_SSH=~/gitssh.sh'  >> /etc/profile
 
 - Move the existing www and bin directories out of the way
 
@@ -100,12 +127,70 @@ mv www www_pb_orig
 - Clone the communifi repo on the dev branch
 
 git clone -b dev git@github.com:exmosis/communifi_pb_opt.git
+mv communifi_pb_opt/* ./
+mv communifi_pb_opt/.git ./
+rm -rf communifi_pb_opt
 
-
----- NOT WORKING
+(N.B. If you get a password prompt, you probably need to run '/etc/init.d/piratebox nodns')
 
 ### Install DLNA next
 
+(Taken from http://piratebox.aod-rpg.de/dokuwiki/doku.php/openwrt/upnpmediaserver)
+
+opkg update
+opkg install minidlna -d piratebox
+ln -s  /mnt/ext/etc/config/minidlna /etc/config/
+ln -s  /mnt/ext/etc/init.d/minidlna /etc/init.d/
+ln -s /mnt/ext/usr/bin/minidlna /usr/bin
+ln -s /mnt/ext/usr/sbin/minidlnad /usr/sbin  
+
+cd /tmp
+wget http://downloads.piratebox.de/openwrt.example.minidlna 
+cp openwrt.example.minidlna   /mnt/ext/etc/config/minidlna
+
+- Edit the MiniDLNA config to change the friendly name
+
+vi /etc/config/minidlna
+
+	edit friendly_name
+	change notify_interval to 300
+
+/etc/init.d/minidlna disable
+sed 's|START=50|START=85\nSTOP=01|' -i /etc/init.d/minidlna
+sed 's/exit 0/#exit 0/' -i /etc/rc.local
+echo 'sleep 10' >> /etc/rc.local
+echo 'export PATH=$PATH:/usr/local/bin' >> /etc/rc.local
+echo 'export LD_LIBRARY_PATH=/lib:/usr/lib:/usr/local/lib' >> /etc/rc.local
+echo '/etc/init.d/minidlna restart' >> /etc/rc.local
+/etc/init.d/minidlna enable
+
+- Start it
+
+/etc/init.d/minidlna start
+
+
+#### Change Wireless ID
+
+Edit 
+/etc/config/wireless 
+and 
+/etc/piratebox.common
+
+#### Change hostname
+
+Edit
+/etc/config/system
+/etc/hosts
+
+
+#### Change http name
+
+Edit /etc/piratebox.common (1 line)
+Edit /etc/config/dhcp (config domain)
+Edit /etc/hosts (all lines)
+
+Make sure /opt/piratebox/bin/generate_config_files.sh has DNS redirect srt o #
+Edit /opt./piratebox/bi/droopy to use right name
 
 
 
